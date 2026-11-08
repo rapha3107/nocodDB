@@ -1,0 +1,25 @@
+// NEXUS OS : NEXUS Store installe et met à jour des applications Flathub
+// (installation système) sans mot de passe pour les membres de « wheel » dans une
+// session locale active. Uniquement les actions d'installation / mise à jour /
+// désinstallation d'applications et runtimes : pas d'ajout ni de modification de
+// dépôts (modify-repo, configure-remote), pas de contrôle parental.
+// (Bazzite fournit déjà une règle équivalente pour install/uninstall ; celle-ci
+// ajoute les mises à jour, nécessaires à store.update_all.)
+polkit.addRule(function(action, subject) {
+    var allowed = [
+        "org.freedesktop.Flatpak.app-install",
+        "org.freedesktop.Flatpak.runtime-install",
+        "org.freedesktop.Flatpak.app-update",
+        "org.freedesktop.Flatpak.runtime-update",
+        "org.freedesktop.Flatpak.app-uninstall",
+        "org.freedesktop.Flatpak.runtime-uninstall",
+        "org.freedesktop.Flatpak.appstream-update",
+        "org.freedesktop.Flatpak.metadata-update"
+    ];
+    if (allowed.indexOf(action.id) >= 0 &&
+        subject.active === true && subject.local === true &&
+        subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});

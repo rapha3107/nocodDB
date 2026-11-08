@@ -1,0 +1,8 @@
+#!/usr/bin/python3 -I
+# NEXUS OS command-line client (talks to the running nexusd of the current user).
+import sys
+
+sys.path.insert(0, "/usr/lib/nexus")
+from nexus.cli import main  # noqa: E402
+
+sys.exit(main())

@@ -1,0 +1,9 @@
+#!/usr/bin/python3 -I
+# NEXUS OS daemon launcher. -I: ignore PYTHONPATH / user site-packages, so only
+# the code shipped in the read-only image (/usr/lib/nexus) is ever imported.
+import sys
+
+sys.path.insert(0, "/usr/lib/nexus")
+from nexus.api.server import main  # noqa: E402
+
+sys.exit(main())

@@ -1,0 +1,28 @@
+[Unit]
+Description=NEXUS OS — démon NEXUS Home (API locale 127.0.0.1:7777)
+Documentation=file:///usr/share/doc/nexus/README
+# Starts with the user's systemd instance (any login: NEXUS session or KDE).
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/nexusd
+Environment=NEXUS_UI_DIR=/usr/share/nexus/ui
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=on-failure
+RestartSec=2s
+# Hardening compatible with a *launcher*: nexusd starts Steam, emulators, mpv and
+# the browser, which inherit this unit's sandbox. Options that create a private
+# mount/user namespace (ProtectSystem=, ProtectHome=, PrivateTmp=, PrivateUsers=;
+# in user units ProtectSystem= implicitly enables PrivateUsers=) would be
+# inherited by every game and break them (Steam pressure-vessel, Flatpak bwrap,
+# PipeWire sockets in $XDG_RUNTIME_DIR). The OS itself is already read-only
+# (/usr is immutable on bootc/ostree) and nexusd never runs as root.
+NoNewPrivileges=yes
+LockPersonality=yes
+UMask=0077
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+KeyringMode=private
+
+[Install]
+WantedBy=default.target

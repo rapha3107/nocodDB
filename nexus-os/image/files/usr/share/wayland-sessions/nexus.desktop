@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=NEXUS
+Comment=NEXUS OS — interface console plein écran (gamescope)
+Exec=/usr/libexec/nexus/nexus-session
+Type=Application
+DesktopNames=gamescope
