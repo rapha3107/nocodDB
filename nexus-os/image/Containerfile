@@ -1,0 +1,44 @@
+# NEXUS OS — image système dérivée de Bazzite (Fedora Atomic / bootc).
+# Contexte de build = répertoire nexus-os/ :
+#   docker build -f image/Containerfile -t nexus-os:dev .
+#   podman build -f image/Containerfile -t nexus-os:dev .
+ARG BASE_IMAGE=ghcr.io/ublue-os/bazzite:stable
+FROM ${BASE_IMAGE}
+
+ARG BASE_IMAGE=ghcr.io/ublue-os/bazzite:stable
+ARG NEXUS_IMAGE_REF=ghcr.io/OWNER/nexus-os:stable
+ARG NEXUS_GIT_SHA=unknown
+
+LABEL org.opencontainers.image.title="NEXUS OS" \
+      org.opencontainers.image.description="Console de jeu PC basée sur Bazzite : NEXUS Home, NEXUS AI, gaming, émulation, store" \
+      org.opencontainers.image.base.name="${BASE_IMAGE}" \
+      org.opencontainers.image.revision="${NEXUS_GIT_SHA}" \
+      containers.bootc="1" \
+      ostree.bootable="1"
+
+# Code NEXUS (Python stdlib uniquement) et interface web statique.
+COPY nexus/ /usr/lib/nexus/nexus/
+COPY ui/ /usr/share/nexus/ui/
+# Fichiers système : lanceurs, unités systemd, session, polkit, udev, sysusers.
+COPY image/files/ /
+COPY image/gen-flatpak-overrides.py /usr/libexec/nexus/gen-flatpak-overrides
+
+RUN set -eux; \
+    find /usr/lib/nexus -name '__pycache__' -prune -exec rm -rf {} +; \
+    python3 -m compileall -q -j0 /usr/lib/nexus; \
+    chmod 0755 /usr/bin/nexusd /usr/bin/nexusctl /usr/libexec/nexus/*; \
+    chmod -R a+rX,go-w /usr/lib/nexus /usr/share/nexus; \
+    python3 -I /usr/libexec/nexus/gen-flatpak-overrides /; \
+    rm -f /usr/libexec/nexus/gen-flatpak-overrides; \
+    python3 -I -c 'import sys; sys.path.insert(0, "/usr/lib/nexus"); import nexus, nexus.api.server, nexus.modules.system; print("nexus", nexus.__version__)'; \
+    NEXUS_VERSION="$(python3 -I -c 'import sys; sys.path.insert(0, "/usr/lib/nexus"); import nexus; print(nexus.__version__)')"; \
+    BASE_VERSION="$(python3 -I -c 'import json; print(json.load(open("/usr/share/ublue-os/image-info.json")).get("version", ""))')"; \
+    printf '{\n  "name": "nexus-os",\n  "nexus-version": "%s",\n  "image-ref": "%s",\n  "base-image": "%s",\n  "base-version": "%s",\n  "git-sha": "%s",\n  "build-date": "%s"\n}\n' \
+        "$NEXUS_VERSION" "$NEXUS_IMAGE_REF" "$BASE_IMAGE" "$BASE_VERSION" "$NEXUS_GIT_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        > /usr/share/nexus/image-info.json; \
+    systemctl --global enable nexusd.service; \
+    systemctl enable nexus-hw-group.service; \
+    rm -rf /tmp/* /var/tmp/*
+
+# Vérification bootc (structure /usr, /etc, /var, noyau) — échoue le build si invalide.
+RUN bootc container lint
