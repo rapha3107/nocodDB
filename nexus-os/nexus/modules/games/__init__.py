@@ -713,3 +713,6 @@ class GamesModule(NexusModule):
                                    "GameMode », « Compteur FPS (MangoHud) », variables d'environnement.")
             out["note"] = "NEXUS ne modifie pas la configuration de Lutris."
         return out
+
+
+MODULE = GamesModule
