@@ -132,6 +132,7 @@ class Runner:
 
     def __init__(self, audit=None):
         self.audit = audit
+        self._children: dict[int, subprocess.Popen] = {}
 
     def which(self, name: str) -> str | None:
         return shutil.which(name)
@@ -172,7 +173,35 @@ class Runner:
         p = subprocess.Popen([exe, *argv[1:]], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, env={**os.environ, **(env or {})},
                              start_new_session=True, shell=False)
+        self._reap()
+        self._children[p.pid] = p
         return p.pid
+
+    def _reap(self) -> None:
+        for pid, p in list(self._children.items()):
+            if p.poll() is not None:
+                self._children.pop(pid, None)
+
+    def is_running(self, pid: int) -> bool:
+        p = self._children.get(pid)
+        return p is not None and p.poll() is None
+
+    def terminate(self, pid: int, timeout: float = 5) -> bool:
+        """Stop a process previously started by spawn() (and only those). Reaps it."""
+        p = self._children.get(pid)
+        if p is None:
+            raise PermissionDenied("Ce processus n'a pas été lancé par NEXUS")
+        if self.audit:
+            self.audit.log("terminate", pid=pid, argv=list(p.args) if isinstance(p.args, list) else str(p.args))
+        if p.poll() is None:
+            p.terminate()
+            try:
+                p.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                p.wait(timeout=timeout)
+        self._children.pop(pid, None)
+        return True
 
 
 @dataclass
@@ -183,7 +212,10 @@ class FakeRunner(Runner):
     binaries: set[str] = field(default_factory=lambda: set(ALLOWED_BINARIES))
     calls: list[list[str]] = field(default_factory=list)
     spawned: list[list[str]] = field(default_factory=list)
+    terminated: list[int] = field(default_factory=list)
+    running: set[int] = field(default_factory=set)
     audit: object = None
+    _next_pid: int = 4242
 
     def which(self, name: str) -> str | None:
         return f"/usr/bin/{name}" if name in self.binaries else None
@@ -212,4 +244,17 @@ class FakeRunner(Runner):
         if not self.which(argv[0]):
             raise Unavailable(f"Programme absent du système: {argv[0]}", details={"binary": argv[0]})
         self.spawned.append(argv)
-        return 4242
+        pid = self._next_pid
+        self._next_pid += 1
+        self.running.add(pid)
+        return pid
+
+    def is_running(self, pid: int) -> bool:
+        return pid in self.running
+
+    def terminate(self, pid: int, timeout: float = 5) -> bool:
+        if pid not in self.running:
+            raise PermissionDenied("Ce processus n'a pas été lancé par NEXUS")
+        self.running.discard(pid)
+        self.terminated.append(pid)
+        return True

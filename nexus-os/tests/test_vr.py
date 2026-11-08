@@ -198,3 +198,16 @@ def test_module_status(vr):
     usb(mod.sys, "1-2", "045e", "0659", "HoloLens Sensors")
     st = mod.status()
     assert st["ok"] and st["headsets"] == ["HP Reverb G2"] and st["monado_installed"] is False
+
+
+def test_start_then_stop_runtime_terminates_own_child(vr, runner):
+    ctx, mod = vr
+    runner.binaries.add("monado-service")
+    started = ctx.call("vr.start_runtime")
+    assert runner.spawned[-1] == ["monado-service"]
+    again = ctx.call("vr.start_runtime")
+    assert again.get("already_running") is True and len(runner.spawned) == 1
+    stopped = ctx.call("vr.stop_runtime")
+    assert stopped["was_running"] is True
+    assert runner.terminated == [started["pid"]]
+    assert ctx.call("vr.stop_runtime")["was_running"] is False

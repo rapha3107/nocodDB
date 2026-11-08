@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import signal
 from pathlib import Path
 
 from ...core.errors import InvalidParams, NexusError, Unavailable
@@ -254,9 +253,8 @@ class VRModule(NexusModule):
         pid = self._monado_pid
         if not pid:
             return False
-        comm = _read(Path("/proc") / str(pid) / "comm")
-        stat = _read(Path("/proc") / str(pid) / "stat") or ""
-        if comm != "monado-service" or re.search(r"\)\s+Z\s", stat):
+        # The runner tracks (and reaps) only the processes NEXUS spawned itself.
+        if not self.ctx.runner.is_running(pid):
             self._monado_pid = None
             return False
         return True
@@ -325,10 +323,7 @@ class VRModule(NexusModule):
             return {"ok": True, "was_running": False, "support": "expérimental",
                     "notes": "Aucun service Monado démarré par NEXUS. SteamVR se ferme depuis Steam."}
         pid = self._monado_pid
-        try:
-            os.kill(pid, signal.SIGTERM)  # only our own child, verified by /proc/<pid>/comm
-        except ProcessLookupError:
-            pass
+        self.ctx.runner.terminate(pid)  # only our own child; reaped by the runner
         self._monado_pid = None
         self.ctx.events.publish("vr.runtime", {"runtime": "monado", "running": False})
         return {"ok": True, "was_running": True, "pid": pid, "support": "expérimental",

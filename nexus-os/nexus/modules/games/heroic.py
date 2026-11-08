@@ -124,7 +124,7 @@ def scan(home: Path) -> dict:
     games: dict[tuple, dict] = {}
 
     def upsert(runner: str, app_name, **fields):
-        if not isinstance(app_name, str) or not APPNAME_RE.match(app_name):
+        if not isinstance(app_name, str) or not APPNAME_RE.fullmatch(app_name):
             return
         g = games.setdefault((runner, app_name), {
             "runner": runner, "app_name": app_name, "title": None, "installed": False,

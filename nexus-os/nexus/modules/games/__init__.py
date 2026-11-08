@@ -87,13 +87,13 @@ def parse_id(gid) -> tuple[str, tuple]:
     """Validate a game id. Returns (source, key). Raises InvalidParams."""
     if not isinstance(gid, str) or len(gid) > 160:
         raise InvalidParams("Identifiant de jeu invalide")
-    m = STEAM_ID_RE.match(gid)
+    m = STEAM_ID_RE.fullmatch(gid)
     if m:
         return "steam", (m.group(1),)
-    m = HEROIC_ID_RE.match(gid)
+    m = HEROIC_ID_RE.fullmatch(gid)
     if m:
         return "heroic", (m.group(1), m.group(2))
-    m = LUTRIS_ID_RE.match(gid)
+    m = LUTRIS_ID_RE.fullmatch(gid)
     if m:
         return "lutris", (int(m.group(1)),)
     raise InvalidParams(f"Identifiant de jeu invalide: {gid!r} (attendu steam:<appid>, "

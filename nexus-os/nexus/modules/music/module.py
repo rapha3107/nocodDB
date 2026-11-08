@@ -453,13 +453,13 @@ class MusicModule(NexusModule):
         self.ctx.events.publish("music.system_volume", {"level": level})
         return {"system_volume": level}
 
-    def _wpctl_get(self) -> int:
+    def _wpctl_get(self) -> tuple[int, bool]:
         r = self.ctx.runner.run(["wpctl", "get-volume", WPCTL_SINK], timeout=10)
         m = re.search(r"Volume:\s*([0-9]+(?:\.[0-9]+)?)", r.stdout or "")
         if not r.ok or not m:
             raise CommandFailed("Impossible de lire le volume système (wpctl)",
                                 details={"stderr": (r.stderr or "")[-500:]})
-        return max(0, min(100, int(round(float(m.group(1)) * 100))))
+        return max(0, min(100, int(round(float(m.group(1)) * 100)))), "[MUTED]" in r.stdout
 
     @action("system_volume", Risk.CONTROL, "Règle le volume général du système (PipeWire, 0 à 100).",
             {"level": Param("int", description="Volume de 0 à 100")})
@@ -471,12 +471,12 @@ class MusicModule(NexusModule):
             {"delta": Param("int", description="Variation, ex. 10 ou -10")})
     def system_volume_step(self, delta):
         delta = _check_level("delta", delta, -100, 100)
-        return self._wpctl_set(max(0, min(100, self._wpctl_get() + delta)))
+        return self._wpctl_set(max(0, min(100, self._wpctl_get()[0] + delta)))
 
     @action("system_volume_get", Risk.READ, "Lit le volume général du système (0 à 100).")
     def system_volume_get(self):
-        r = self.ctx.runner.run(["wpctl", "get-volume", WPCTL_SINK], timeout=10)
-        return {"system_volume": self._wpctl_get(), "muted": "[MUTED]" in (r.stdout or "")}
+        level, muted = self._wpctl_get()
+        return {"system_volume": level, "muted": muted}
 
     # ------------------------------------------------------------------ playlists
     def _playlists(self) -> dict:

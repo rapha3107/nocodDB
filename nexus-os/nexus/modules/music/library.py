@@ -54,6 +54,7 @@ class Library:
     def __init__(self, index_path: Path):
         self.index_path = index_path
         self._lock = threading.Lock()
+        self._scan_lock = threading.Lock()   # one scan at a time (startup scan vs. user scan)
         self.tracks: dict[str, dict] = {}
         self.dirs: list[str] = []
         self.scanned_at: float | None = None
@@ -80,6 +81,10 @@ class Library:
     # -- scan ----------------------------------------------------------------
     def scan(self, dirs: list[Path], progress=None) -> dict:
         """Rescan `dirs`; unchanged files (same size and mtime) keep their cached tags."""
+        with self._scan_lock:
+            return self._scan(dirs, progress)
+
+    def _scan(self, dirs: list[Path], progress=None) -> dict:
         old = {t["path"]: t for t in self.tracks.values()}
         found: dict[str, dict] = {}
         files: list[Path] = []

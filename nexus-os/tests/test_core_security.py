@@ -259,3 +259,24 @@ def test_param_validator_runs_before_permission(make_ctx):
     assert c.permissions.pending() == []
     with pytest.raises(ConfirmationRequired):
         c.call("v.rm", {"app_id": "org.x.Good"})
+
+
+def test_runner_terminate_only_own_children():
+    import os
+    from nexus.security.runner import Runner
+    r = Runner()
+    with pytest.raises(PermissionDenied):
+        r.terminate(os.getpid())
+    with pytest.raises(PermissionDenied):
+        r.terminate(1)
+
+
+def test_fake_runner_terminate():
+    from nexus.security.runner import FakeRunner
+    r = FakeRunner()
+    pid = r.spawn(["mpv", "--idle=yes"])
+    assert r.is_running(pid)
+    r.terminate(pid)
+    assert not r.is_running(pid) and r.terminated == [pid]
+    with pytest.raises(PermissionDenied):
+        r.terminate(pid)
