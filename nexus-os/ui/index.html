@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="nexus-token" content="__NEXUS_TOKEN__">
+  <meta name="color-scheme" content="dark">
+  <title>NEXUS Home</title>
+  <link rel="icon" href="img/nexus.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/nexus.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <div id="app" class="app" data-layer="base">
+    <header class="topbar">
+      <button class="me" id="me" data-nav data-zone="top" aria-label="Changer de profil">
+        <span class="avatar" id="me-avatar" aria-hidden="true"></span>
+        <span class="me-name" id="me-name">…</span>
+      </button>
+      <nav class="tabs" id="tabs" aria-label="Sections">
+        <span class="shoulder" aria-hidden="true">L1</span>
+        <div class="tab-list" id="tab-list" role="tablist"></div>
+        <span class="shoulder" aria-hidden="true">R1</span>
+      </nav>
+      <div class="status-cluster">
+        <span class="conn" id="conn" title="Connexion à NEXUS">hors ligne</span>
+        <time class="clock" id="clock"></time>
+        <button class="ai-orb" id="ai-orb" data-nav data-zone="top" aria-label="Ouvrir NEXUS AI">
+          <span class="orb" aria-hidden="true"></span><span>NEXUS AI</span>
+        </button>
+      </div>
+    </header>
+    <main class="content" id="content" tabindex="-1"></main>
+    <div class="tasks" id="tasks" aria-live="polite"></div>
+    <footer class="hints" id="hints" aria-hidden="true"></footer>
+  </div>
+  <div id="layers"></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>

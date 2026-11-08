@@ -7,6 +7,7 @@ FakeNet and so the Security agent can audit every external endpoint here.
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
@@ -58,9 +59,12 @@ class Net:
         try:
             with urllib.request.urlopen(req, timeout=timeout or self.timeout) as r:
                 body = r.read(MAX_BYTES + 1)
+        except urllib.error.HTTPError as e:
+            raise CommandFailed(f"Requête réseau échouée: HTTP {e.code}", code="network_error",
+                                details={"url": url.split("?")[0], "status": e.code}) from e
         except Exception as e:
             raise CommandFailed(f"Requête réseau échouée: {type(e).__name__}",
-                                code="network_error", details={"url": url.split("?")[0]}) from e
+                                code="network_error", details={"url": url.split("?")[0], "status": None}) from e
         if len(body) > MAX_BYTES:
             raise CommandFailed("Réponse trop volumineuse", code="network_error")
         return body

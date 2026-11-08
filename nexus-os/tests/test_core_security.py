@@ -240,3 +240,22 @@ def test_tasks_report_progress(ctx):
     t = ctx.tasks.wait(tid)
     assert t.state == "done" and t.result == 42
     assert any(e["topic"] == "task.update" and e["data"]["progress"] == 0.5 for e in ctx.events.recent("task"))
+
+
+def test_param_validator_runs_before_permission(make_ctx):
+    from nexus.security.verify import validate_flatpak_id
+
+    class V(NexusModule):
+        name = "v"
+
+        @action("rm", Risk.DELETE_DATA, "x", {"app_id": Param("str", validator=validate_flatpak_id)})
+        def rm(self, app_id):
+            return app_id
+
+    c = make_ctx(modules=[])
+    c.registry.register(V(c))
+    with pytest.raises(InvalidParams):
+        c.call("v.rm", {"app_id": "bad; id"})
+    assert c.permissions.pending() == []
+    with pytest.raises(ConfirmationRequired):
+        c.call("v.rm", {"app_id": "org.x.Good"})

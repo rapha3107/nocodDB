@@ -32,6 +32,9 @@ class Param:
     description: str = ""
     default: Any = None
     choices: list | None = None
+    # Optional validator run BEFORE the permission check, so malformed input is
+    # rejected without ever prompting the user. Raise InvalidParams/NexusError.
+    validator: Callable[[Any], Any] | None = None
 
 
 @dataclass
@@ -103,6 +106,13 @@ def validate_params(spec: ActionSpec, params: dict) -> dict:
             raise InvalidParams(f"Valeur trop longue pour {k}")
         if p.choices is not None and v not in p.choices:
             raise InvalidParams(f"Valeur non autorisée pour {k}: {v}")
+        if p.validator is not None:
+            try:
+                p.validator(v)
+            except NexusError:
+                raise
+            except Exception as e:
+                raise InvalidParams(f"Valeur invalide pour {k}") from e
         clean[k] = v
     return clean
 

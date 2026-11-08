@@ -53,6 +53,8 @@ DEFAULTS: dict[str, Any] = {
     "security.auto_install_free_games": True, # free legal games from authorized sources
     "music.volume": 70,
     "ui.theme": "dark",
+    "browser.search_engine": "https://duckduckgo.com/?q=",
+    "browser.allowed_local_hosts": [],
 }
 
 
