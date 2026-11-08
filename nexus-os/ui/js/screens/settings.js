@@ -229,6 +229,7 @@ function hardwarePage(root, app) {
   }
   root.append(el("h1", { style: { marginBottom: "1.4rem" }, text: "Manettes et matériel" }),
     el("section.section", {}, el("h2", { text: "Manettes" }), pads),
+    inputSection(app),
     el("section.section", {}, el("h2", { text: "Barre lumineuse DualSense" }), api.hasAction("hardware.controller_lightbar") ? lightbar : unavailable(api.moduleProblem("hardware") || "réglage absent")),
     el("section.section", {}, el("h2", { text: "Associer une manette" }), setup),
     el("section.section", {}, el("h2", { text: "Overlay de performances" }), el("div.list", { "data-zone": "overlay" },
@@ -251,6 +252,35 @@ function hardwarePage(root, app) {
     if (r?.disk) out.push(el("h3", { style: { marginTop: "1rem" }, text: "Disque" }), kv({ chemin: r.disk.path, libre: fmtBytes(r.disk.free_bytes), total: fmtBytes(r.disk.total_bytes) }));
     return out.length ? out : resultView(r);
   }, { module: "hardware" });
+}
+
+// Gamepad outside NEXUS (Firefox, desktop apps): module `input` (uinput mouse/keyboard).
+function inputSection(app) {
+  const sec = el("section.section", { "data-input-section": true }, el("h2", { text: "Manette hors de NEXUS (navigateur, applications)" }));
+  if (api.moduleProblem("input") || !api.hasAction("input.status")) {
+    sec.append(unavailable(api.moduleProblem("input") || "pilotage manette → souris/clavier absent"));
+    return sec;
+  }
+  const status = el("div.panel");
+  const mapping = el("div.list", { "data-zone": "input-mapping" });
+  const loadStatus = () => loadInto(status, () => api.call("input.status"), (r) => resultView(r), { module: "input" });
+  sec.append(el("p.muted", { style: { maxWidth: "64ch", marginBottom: "1rem" }, text: "Quand Firefox ou une application de bureau est au premier plan, la manette pilote un pointeur et un clavier virtuels." }),
+    el("div.btn-row", { "data-zone": "input-actions", style: { marginBottom: "1rem" } },
+      btn("Activer", () => run(async () => { const r = await api.call("input.enable"); loadStatus(); return r; }, "Pilotage manette activé"), { primary: true }),
+      btn("Désactiver", () => run(async () => { const r = await api.call("input.disable"); loadStatus(); return r; }, "Pilotage manette désactivé"))),
+    status,
+    choiceRow(app, "Vitesse du pointeur", "input.pointer_speed", [1, 3, 5, 7, 10].map((v) => [v, String(v)])),
+    choiceRow(app, "Disposition du clavier virtuel", "input.keyboard_layout", [["azerty", "AZERTY"], ["qwerty", "QWERTY"]]),
+    el("h3", { style: { margin: "1rem 0 .6rem" }, text: "Schéma des boutons" }), mapping);
+  loadStatus();
+  loadInto(mapping, () => api.call("input.mapping"), (r) => {
+    const rows = asList(r, "mapping", "buttons");
+    const entries = rows.length ? rows.map((m) => [pick(m, "button", "input", "name"), pick(m, "action", "label", "description")])
+      : Object.entries(r?.mapping || r || {}).filter(([, v]) => typeof v !== "object");
+    return entries.length ? entries.map(([b, a]) => el("div.row-item", {}, el("span.glyph", { text: String(b) }), el("div.grow", { text: String(a ?? "") })))
+      : empty("Schéma non disponible");
+  }, { module: "input" });
+  return sec;
 }
 
 // ---- system ------------------------------------------------------------------------

@@ -118,7 +118,7 @@ function emit(topic, data) {
 }
 
 const TOPICS = ["notification", "task.update", "music.state", "confirmation.requested", "ai.reply",
-  "ai.listening", "profiles.changed", "settings.changed", "games.changed", "store.changed"];
+  "ai.listening", "input.mode", "profiles.changed", "settings.changed", "games.changed", "store.changed"];
 let es = null;
 let retry = 1000;
 export function connectEvents() {

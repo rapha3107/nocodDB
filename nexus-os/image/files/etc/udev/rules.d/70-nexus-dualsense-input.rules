@@ -1,0 +1,7 @@
+# NEXUS OS — accès en lecture de l'utilisateur de la session (uaccess, ACL posée
+# par systemd-logind via 73-seat-late.rules) à TOUS les nœuds evdev d'une DualSense
+# / DualSense Edge : manette (déjà couverte par ID_INPUT_JOYSTICK dans
+# 70-uaccess.rules), mais aussi pavé tactile et capteurs de mouvement, qui ne le
+# sont pas. Restreint aux identifiants Sony 054c:0ce6 (DualSense) et 054c:0df2
+# (DualSense Edge). /dev/uinput est déjà en uaccess dans Bazzite (60-steam-input.rules).
+ACTION!="remove", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/vendor}=="054c", ATTRS{id/product}=="0ce6|0df2", TAG+="uaccess"

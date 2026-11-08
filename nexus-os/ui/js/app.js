@@ -366,6 +366,11 @@ function wireEvents() {
   });
   api.on("notification", (d) => toast(d?.title || "Notification", d?.body || "", d?.level || "info"));
   api.on("task.update", (t) => trackTask(t));
+  api.on("input.mode", (d) => {
+    const mode = pick(d, "label", "mode") || "manette";
+    const help = pick(d, "help", "hint", "message") || "";
+    toast(`Manette : ${mode}`, String(help), "info", 6000);
+  });
   api.on("confirmation.requested", (d) => {
     if (!d || d.origin !== "ai" || api.isHandled(d.id)) return;
     api.resolveConfirmation(d).then(() => toast("Action confirmée", d.summary || "")).catch((e) => toastError(e));
