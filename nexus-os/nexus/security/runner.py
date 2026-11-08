@@ -27,6 +27,8 @@ ALLOWED_BINARIES: set[str] = {
     "pw-record", "arecord", "whisper-cli", "piper", "piper-tts", "ollama", "lsusb", "vulkaninfo",
     "powerprofilesctl", "gamemoded", "lutris", "systemctl", "loginctl", "nmcli", "bluetoothctl",
     "gsettings", "notify-send", "glxinfo", "monado-service", "lscpu", "upower",
+    "gamemoderun", "mangohud", "nvidia-smi", "lspci", "pw-play", "paplay", "aplay", "gamescope",
+    "ffprobe", "free", "uname", "journalctl",
 }
 
 
@@ -36,6 +38,12 @@ def _flatpak_validator(argv: Sequence[str]) -> None:
     sub = next((a for a in argv[1:] if not a.startswith("-")), None)
     if sub not in allowed:
         raise PermissionDenied(f"flatpak sub-command refusée: {sub}")
+    if sub == "run":
+        # `flatpak run <app-id> [app args]`: no flatpak options (e.g. --command,
+        # --filesystem, --devel) may widen the sandbox.
+        i = argv.index("run")
+        if len(argv) <= i + 1 or argv[i + 1].startswith("-"):
+            raise PermissionDenied("flatpak run: options interdites avant l'identifiant d'application")
     if sub == "override":
         # Only allow read-only inspection, never granting extra permissions.
         if not any(a == "--show" for a in argv):
@@ -72,6 +80,12 @@ def _systemctl_validator(argv: Sequence[str]) -> None:
     raise PermissionDenied(f"systemctl refusé: {' '.join(args)}")
 
 
+def _journalctl_validator(argv: Sequence[str]) -> None:
+    # read-only, current user's logs only
+    if "--user" not in argv or any(a in ("--rotate", "--vacuum-size", "--vacuum-time", "--flush") or a.startswith("--vacuum") for a in argv):
+        raise PermissionDenied("journalctl: lecture des journaux utilisateur uniquement")
+
+
 def _xdg_open_validator(argv: Sequence[str]) -> None:
     if len(argv) != 2 or not argv[1].startswith(("steam://", "heroic://", "https://", "lutris:")):
         raise PermissionDenied("xdg-open n'accepte que des URL steam://, heroic://, lutris: ou https://")
@@ -83,6 +97,7 @@ VALIDATORS: dict[str, Callable[[Sequence[str]], None]] = {
     "bootc": _bootc_validator,
     "systemctl": _systemctl_validator,
     "xdg-open": _xdg_open_validator,
+    "journalctl": _journalctl_validator,
 }
 
 

@@ -127,6 +127,9 @@ def test_param_validation(ctx):
     ["systemctl", "start", "sshd"],
     ["xdg-open", "file:///etc/shadow"],
     ["flatpak", "list\x00"],
+    ["flatpak", "run", "--command=sh", "org.libretro.RetroArch"],
+    ["flatpak", "run", "--filesystem=host", "org.libretro.RetroArch"],
+    ["journalctl", "--vacuum-time=1s", "--user"],
 ])
 def test_runner_rejects_dangerous(argv):
     with pytest.raises(PermissionDenied):
@@ -138,6 +141,7 @@ def test_runner_rejects_dangerous(argv):
     ["rpm-ostree", "upgrade"],
     ["systemctl", "--user", "restart", "nexusd.service"],
     ["xdg-open", "steam://rungameid/570"],
+    ["flatpak", "run", "org.libretro.RetroArch", "-L", "core.so", "/home/u/roms/a.sfc"],
 ])
 def test_runner_allows_safe(argv):
     validate_argv(argv)
