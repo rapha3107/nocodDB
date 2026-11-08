@@ -117,3 +117,11 @@ def test_ai_cannot_change_security_without_user(ctx):
     # AI cannot create profiles silently either
     with pytest.raises(ConfirmationRequired):
         ctx.call("profiles.create", {"name": "IA"}, origin=Origin.AI)
+
+
+def test_input_settings(ctx):
+    ctx.call("profiles.settings_set", {"key": "input.pointer_speed", "value": 7})
+    ctx.call("profiles.settings_set", {"key": "input.keyboard_layout", "value": "qwerty"})
+    assert ctx.settings.get("input.pointer_speed") == 7
+    with pytest.raises(InvalidParams):
+        ctx.call("profiles.settings_set", {"key": "input.pointer_speed", "value": 0})

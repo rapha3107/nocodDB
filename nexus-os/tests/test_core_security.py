@@ -170,6 +170,8 @@ def server(ctx, tmp_path):
     ui = tmp_path / "ui"
     ui.mkdir()
     (ui / "index.html").write_text('<meta name="nexus-token" content="__NEXUS_TOKEN__">')
+    (ui / "osk.html").write_text('<meta name="nexus-token" content="__NEXUS_TOKEN__">')
+    (ui / "other.html").write_text('<meta name="nexus-token" content="__NEXUS_TOKEN__">')
     srv = make_server(ctx, port=0, token="T0KEN", ui_dir=ui)
     th = threading.Thread(target=srv.serve_forever, daemon=True)
     th.start()
@@ -193,6 +195,11 @@ def _http(srv, method, path, body=None, headers=None):
 def test_index_injects_token(server):
     st, body = _http(server, "GET", "/")
     assert st == 200 and b"T0KEN" in body
+
+
+def test_token_only_in_allowed_pages(server):
+    assert b"T0KEN" in _http(server, "GET", "/osk.html")[1]
+    assert b"T0KEN" not in _http(server, "GET", "/other.html")[1]
 
 
 def test_post_requires_token(server):

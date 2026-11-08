@@ -16,6 +16,20 @@ LABEL org.opencontainers.image.title="NEXUS OS" \
       containers.bootc="1" \
       ostree.bootable="1"
 
+# Paquets ajoutés à Bazzite (vérifiés absents de la base, cf. image/BASE_INSPECTION.md) :
+#   mpv : lecteur natif piloté par NEXUS Music via son socket IPC (le Flatpak
+#         io.mpv.Mpv ne peut pas créer ce socket dans $XDG_RUNTIME_DIR/nexus).
+# Dépôts limités à Fedora (fedora + updates) : pas de COPR tiers pour ce paquet.
+# Secret facultatif `build_ca` : certificat d'un proxy HTTPS d'entreprise pour dnf
+# (jamais copié dans l'image) : --secret id=build_ca,src=/chemin/ca.crt
+RUN --mount=type=secret,id=build_ca,required=false \
+    set -eux; \
+    CA_OPT=""; if [ -s /run/secrets/build_ca ]; then CA_OPT="--setopt=sslcacert=/run/secrets/build_ca"; fi; \
+    dnf5 -y install $CA_OPT --setopt=install_weak_deps=False --repo=fedora --repo=updates mpv; \
+    dnf5 clean all; \
+    rm -rf /var/cache/libdnf5 /var/lib/dnf /var/log/dnf5.log* /tmp/* /var/tmp/*; \
+    mpv --version | head -1
+
 # Code NEXUS (Python stdlib uniquement) et interface web statique.
 COPY nexus/ /usr/lib/nexus/nexus/
 COPY ui/ /usr/share/nexus/ui/

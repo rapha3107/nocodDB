@@ -48,6 +48,8 @@ from ..security.verify import safe_join
 log = logging.getLogger("nexus.api")
 UI_DIR = Path(os.environ.get("NEXUS_UI_DIR", Path(__file__).resolve().parents[2] / "ui"))
 MAX_BODY = 1024 * 1024
+# Top-level pages that receive the session token (same CSP as index.html).
+TOKEN_PAGES = {"index.html", "osk.html"}
 
 
 class NexusServer(ThreadingHTTPServer):
@@ -249,7 +251,7 @@ class Handler(BaseHTTPRequestHandler):
         if ctype == "text/javascript":
             ctype = "application/javascript"
         extra = {}
-        if f.name == "index.html":
+        if f.name in TOKEN_PAGES and f.parent == ui.resolve():
             body = body.replace(b"__NEXUS_TOKEN__", self.server.token.encode())
             extra["Content-Security-Policy"] = (
                 "default-src 'self'; img-src 'self' data: https:; media-src 'self' https: http:; "

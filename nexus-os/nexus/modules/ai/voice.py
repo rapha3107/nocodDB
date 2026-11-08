@@ -30,11 +30,15 @@ LANG_VOICE = {"fr": "fr_FR", "en": "en_US"}
 
 
 class Voice:
-    def __init__(self, runner, models_dir: Path, runtime_dir: Path, settings):
-        self.runner = runner
-        self.models_dir = models_dir
-        self.runtime_dir = runtime_dir
-        self.settings = settings
+    def __init__(self, ctx):
+        self.ctx = ctx
+        self.models_dir: Path = ctx.paths.data / "models"
+        self.runtime_dir: Path = ctx.paths.runtime
+        self.settings = ctx.settings
+
+    @property
+    def runner(self):
+        return self.ctx.runner
 
     # ----------------------------------------------------------------- discovery
     def lang(self) -> str:

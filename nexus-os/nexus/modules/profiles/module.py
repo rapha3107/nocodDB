@@ -56,6 +56,8 @@ SETTABLE: dict[str, Callable[[Any], Any]] = {
     "ai.share_library_with_remote": _bool,
     "security.auto_install_verified": _bool,
     "security.auto_install_free_games": _bool,
+    "input.pointer_speed": _int_range(1, 10),
+    "input.keyboard_layout": _choice("azerty", "qwerty"),
 }
 
 

@@ -30,6 +30,7 @@ export const app = {
   go(id, opts = {}) {
     if (!byId[id]) return;
     state.tab = id;
+    for (const e of state.stack) e.handlers?.dispose?.();
     state.stack = [];
     renderTabs();
     app.push(byId[id], { root: true, ...opts });
