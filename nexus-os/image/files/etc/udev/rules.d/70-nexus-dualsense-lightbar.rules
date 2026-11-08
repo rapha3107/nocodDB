@@ -1,7 +1,9 @@
 # NEXUS OS — barre lumineuse DualSense / DualSense Edge (pilote hid-playstation).
 # Rend uniquement la couleur (multi_intensity) et la luminosité (brightness) de la
-# LED « inputN:rgb:indicator » modifiables par l'utilisateur de la session, pour
+# LED « inputN:rgb:indicator » modifiables par le groupe nexus-hw (0664), pour
 # hardware.controller_lightbar. Les attributs sysfs ne sont pas des nœuds de
-# périphérique : TAG+="uaccess" ne s'y applique pas, d'où le chmod ciblé.
-# Aucune autre LED (joueur, micro) ni aucun autre attribut n'est concerné.
-ACTION=="add", SUBSYSTEM=="leds", KERNEL=="input*:rgb:indicator", KERNELS=="*:054C:0CE6.*|*:054C:0DF2.*", RUN+="/usr/bin/chmod 0666 /sys%p/multi_intensity /sys%p/brightness"
+# périphérique : TAG+="uaccess" ne s'y applique pas (et sysfs n'a pas d'ACL), d'où
+# le chgrp/chmod ciblé. Aucune autre LED (joueur, micro) ni attribut n'est concerné.
+# Le groupe est créé par /usr/lib/sysusers.d/nexus.conf ; les membres de « wheel »
+# y sont ajoutés au démarrage par nexus-hw-group.service.
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="input*:rgb:indicator", KERNELS=="*:054C:0CE6.*|*:054C:0DF2.*", RUN+="/usr/bin/chgrp nexus-hw /sys%p/multi_intensity /sys%p/brightness", RUN+="/usr/bin/chmod 0664 /sys%p/multi_intensity /sys%p/brightness"

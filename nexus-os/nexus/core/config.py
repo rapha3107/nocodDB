@@ -55,6 +55,7 @@ DEFAULTS: dict[str, Any] = {
     "ui.theme": "dark",
     "browser.search_engine": "https://duckduckgo.com/?q=",
     "browser.allowed_local_hosts": [],
+    "emulation.rom_dir": "~/Games/ROMs",
 }
 
 

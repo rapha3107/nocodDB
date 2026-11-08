@@ -1,0 +1,15 @@
+#!/usr/bin/bash
+# Ajoute les administrateurs locaux (groupe wheel, dont l'utilisateur créé à
+# l'installation) au groupe nexus-hw. Idempotent ; exécuté à chaque démarrage
+# (root, avant l'écran de connexion). Un nouvel utilisateur ajouté à wheel est
+# pris en compte au démarrage suivant.
+set -euo pipefail
+getent group nexus-hw >/dev/null || exit 0
+members=$(getent group wheel | cut -d: -f4)
+IFS=',' read -r -a users <<< "${members}"
+for u in "${users[@]}"; do
+    [ -n "$u" ] || continue
+    id -nG "$u" 2>/dev/null | tr ' ' '\n' | grep -qx nexus-hw && continue
+    gpasswd -a "$u" nexus-hw >/dev/null
+    echo "nexus-hw: ajout de $u"
+done

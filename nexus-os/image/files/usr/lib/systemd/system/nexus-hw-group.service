@@ -1,0 +1,11 @@
+[Unit]
+Description=NEXUS OS — ajoute les membres de wheel au groupe nexus-hw (barre lumineuse DualSense)
+After=systemd-sysusers.service
+Before=display-manager.service systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nexus/nexus-hw-group
+
+[Install]
+WantedBy=multi-user.target
