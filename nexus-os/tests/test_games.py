@@ -141,6 +141,9 @@ def ctx(make_ctx, home, tmp_path):
     c = make_ctx(modules=["games"])
     m = c.module("games")
     m.drm_root = tmp_path / "drm"
+    m.proc_root = tmp_path / "proc"
+    (tmp_path / "proc").mkdir()
+    m.watch_interval = 0.01
     return c
 
 
@@ -258,7 +261,8 @@ def test_launch_steam_exact_argv(ctx, runner):
     assert runner.spawned == [["xdg-open", "steam://rungameid/570"]]
     assert r["launched"] and r["title"] == "Dota 2"
     ev = ctx.events.recent("games.launched")
-    assert ev and ev[-1]["data"] == {"id": "steam:570", "title": "Dota 2", "source": "steam"}
+    assert ev and ev[-1]["data"] == {"id": "steam:570", "title": "Dota 2", "source": "steam",
+                                  "exit_detection": True}
 
 
 def test_launch_heroic_and_lutris_argv(ctx, runner):
@@ -536,3 +540,43 @@ def test_diagnose_hardware_info_failing(ctx, runner):
 def test_diagnose_without_hardware_module(ctx):
     r = ctx.call("games.diagnose", {"id": "lutris:12"})
     assert "hardware_unchecked" in _codes(r)
+
+
+def _wait_event(ctx, topic, timeout=3):
+    import time as _t
+    end = _t.time() + timeout
+    while _t.time() < end:
+        ev = ctx.events.recent(topic)
+        if ev:
+            return ev[-1]
+        _t.sleep(0.01)
+    return None
+
+
+def test_steam_game_exit_detected(ctx, tmp_path):
+    proc = tmp_path / "proc" / "777"
+    proc.mkdir()
+    (proc / "cmdline").write_bytes(b"/home/u/.steam/ubuntu12_32/reaper\x00SteamLaunch\x00AppId=570\x00--\x00game\x00")
+    ctx.call("games.launch", {"id": "steam:570"})
+    import time as _t
+    _t.sleep(0.1)
+    assert ctx.events.recent("games.exited") == []      # still running
+    (proc / "cmdline").unlink()
+    proc.rmdir()
+    ev = _wait_event(ctx, "games.exited")
+    assert ev and ev["data"] == {"id": "steam:570", "title": "Dota 2", "reason": "exited"}
+
+
+def test_steam_game_never_started_reports_not_detected(ctx):
+    ctx.module("games").watch_start_timeout = 0.05
+    ctx.call("games.launch", {"id": "steam:570"})
+    ev = _wait_event(ctx, "games.exited")
+    assert ev and ev["data"]["reason"] == "not_detected"
+
+
+def test_other_appid_does_not_count(ctx, tmp_path):
+    proc = tmp_path / "proc" / "778"
+    proc.mkdir()
+    (proc / "cmdline").write_bytes(b"reaper\x00SteamLaunch\x00AppId=5700\x00")
+    assert ctx.module("games")._steam_game_running("570") is False
+    assert ctx.module("games")._steam_game_running("5700") is True

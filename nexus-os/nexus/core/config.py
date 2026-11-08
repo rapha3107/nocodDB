@@ -56,6 +56,9 @@ DEFAULTS: dict[str, Any] = {
     "browser.search_engine": "https://duckduckgo.com/?q=",
     "browser.allowed_local_hosts": [],
     "emulation.rom_dir": "~/Games/ROMs",
+    "music.dirs": ["~/Music"],
+    "music.duck_on_game": True,
+    "music.duck_level": 30,
 }
 
 

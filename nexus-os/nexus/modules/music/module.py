@@ -117,7 +117,8 @@ class MusicModule(NexusModule):
         dirs = self.ctx.settings.get("music.dirs")
         if not isinstance(dirs, list) or not dirs or not all(isinstance(d, str) and d for d in dirs):
             return [Path(self.ctx.paths.home) / "Music"]
-        return [Path(d).expanduser() for d in dirs]
+        home = Path(self.ctx.paths.home)
+        return [home / d[2:] if d.startswith("~/") else (home if d == "~" else Path(d)) for d in dirs]
 
     def _saved_volume(self) -> int:
         v = self.ctx.settings.get("music.volume", 70)

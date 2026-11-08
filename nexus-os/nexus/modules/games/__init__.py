@@ -127,6 +127,48 @@ class GamesModule(NexusModule):
         self.data_dir: Path = Path(ctx.paths.data) / "games"
         self._lock = threading.RLock()
         self._lib: dict | None = None   # {"games": [...], "covers": {...}, "meta": {...}, "updated": ts}
+        # Game-exit detection (Steam only): Steam runs every game under
+        # `reaper SteamLaunch AppId=<appid> -- ...`; we watch /proc for it.
+        self.proc_root: Path = Path("/proc")
+        self.watch_interval: float = 3.0
+        self.watch_start_timeout: float = 180.0   # game may need an update first
+        self._stop = threading.Event()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _steam_game_running(self, appid: str) -> bool:
+        needle = f"AppId={appid}".encode()
+        try:
+            entries = list(self.proc_root.iterdir())
+        except OSError:
+            return False
+        for d in entries:
+            if not d.name.isdigit():
+                continue
+            try:
+                cmd = (d / "cmdline").read_bytes()
+            except OSError:
+                continue
+            if b"SteamLaunch" in cmd and needle in cmd.split(b"\x00"):
+                return True
+        return False
+
+    def _watch_exit(self, gid: str, title: str, appid: str) -> None:
+        start = time.monotonic()
+        seen = False
+        while not self._stop.wait(self.watch_interval):
+            running = self._steam_game_running(appid)
+            if running:
+                seen = True
+            elif seen:
+                self.ctx.events.publish("games.exited", {"id": gid, "title": title, "reason": "exited"})
+                return
+            elif time.monotonic() - start > self.watch_start_timeout:
+                # Never saw the process (download, error, launch cancelled):
+                # report it so listeners (music ducking) can restore state.
+                self.ctx.events.publish("games.exited", {"id": gid, "title": title, "reason": "not_detected"})
+                return
 
     # ------------------------------------------------------------------ scanning
     @property
@@ -342,7 +384,11 @@ class GamesModule(NexusModule):
             launches[g["id"]] = now
             save_json(self.data_dir / "launches.json", launches)
             g["last_played_ts"], g["last_played"] = now, _iso(now)
-        self.ctx.events.publish("games.launched", {"id": g["id"], "title": g["title"], "source": src})
+        self.ctx.events.publish("games.launched", {"id": g["id"], "title": g["title"], "source": src,
+                                                   "exit_detection": src == "steam"})
+        if src == "steam":
+            threading.Thread(target=self._watch_exit, args=(g["id"], g["title"], key[0]),
+                             name=f"nexus-game-watch-{key[0]}", daemon=True).start()
         msg = f"Lancement de {g['title']}"
         if src == "steam" and not g["installed"]:
             msg += " — le jeu n'est pas entièrement installé, Steam va proposer l'installation ou la mise à jour"
