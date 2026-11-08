@@ -85,6 +85,7 @@ export const nav = {
   },
 
   get layerCount() { return layers.length; },
+  closeAll() { while (layers.length) { const t = layers[layers.length - 1]; t.onBack ? t.onBack() : this.popLayer(t); if (layers[layers.length - 1] === t) this.popLayer(t); } },
   topLayer() { return layers[layers.length - 1] || null; },
 
   onIntent(fn) { intentHandlers.push(fn); },
@@ -103,6 +104,8 @@ export const nav = {
       return;
     }
     if (intent === "back" && top) { top.onBack ? top.onBack() : this.popLayer(top); return; }
+    // With a modal open, only "home" and push-to-talk reach the app.
+    if (top && !["home", "ptt-start", "ptt-end"].includes(intent)) return;
     for (const fn of intentHandlers) if (fn(intent, info) === true) return;
   },
 };

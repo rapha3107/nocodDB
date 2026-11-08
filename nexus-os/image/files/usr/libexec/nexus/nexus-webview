@@ -1,0 +1,91 @@
+#!/usr/bin/python3 -I
+"""Client d'affichage minimal de NEXUS Home : une vue WebKitGTK 6 plein écran.
+
+Utilise uniquement des composants de l'image Bazzite (python3-gobject, gtk4,
+webkitgtk6.0, libmanette pour l'API Gamepad) : pas de téléchargement, versionné
+avec le système. La navigation est limitée à NEXUS Home (127.0.0.1) ; les sites
+externes sont ouverts par le module NEXUS Browser, pas ici.
+
+    nexus-webview [--windowed] [URL]   (défaut http://127.0.0.1:7777/)
+    nexus-webview --check              (code 0 si WebKitGTK 6 est utilisable)
+"""
+
+import sys
+from urllib.parse import urlparse
+
+ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def load_gi():
+    import gi
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("WebKit", "6.0")
+    from gi.repository import GLib, Gtk, WebKit
+    return GLib, Gtk, WebKit
+
+
+def allowed(uri: str) -> bool:
+    u = urlparse(uri or "")
+    if u.scheme in ("about", "data") and (uri or "").startswith(("about:blank", "data:")):
+        return True
+    return u.scheme == "http" and u.hostname in ALLOWED_HOSTS
+
+
+def main(argv):
+    args = [a for a in argv if not a.startswith("--")]
+    if "--check" in argv:
+        load_gi()
+        return 0
+    url = args[0] if args else "http://127.0.0.1:7777/"
+    if not allowed(url):
+        print("nexus-webview: seule une adresse locale (127.0.0.1) est autorisée", file=sys.stderr)
+        return 2
+    windowed = "--windowed" in argv
+    GLib, Gtk, WebKit = load_gi()
+
+    app = Gtk.Application(application_id="os.nexus.Home")
+
+    def on_activate(app):
+        win = Gtk.ApplicationWindow(application=app, title="NEXUS")
+        win.set_default_size(1280, 800)
+        net = WebKit.NetworkSession.new_ephemeral() if hasattr(WebKit.NetworkSession, "new_ephemeral") else None
+        view = WebKit.WebView(network_session=net) if net else WebKit.WebView()
+        s = view.get_settings()
+        s.set_enable_developer_extras(False)
+        s.set_javascript_can_open_windows_automatically(False)
+        s.set_hardware_acceleration_policy(WebKit.HardwareAccelerationPolicy.ALWAYS)
+        s.set_media_playback_requires_user_gesture(False)
+        s.set_enable_back_forward_navigation_gestures(False)
+
+        def on_policy(view, decision, dtype):
+            if dtype in (WebKit.PolicyDecisionType.NAVIGATION_ACTION, WebKit.PolicyDecisionType.NEW_WINDOW_ACTION):
+                uri = decision.get_navigation_action().get_request().get_uri()
+                if dtype == WebKit.PolicyDecisionType.NEW_WINDOW_ACTION or not allowed(uri):
+                    decision.ignore()
+                    return True
+            return False
+
+        def on_permission(view, request):
+            request.deny()  # micro/caméra/géolocalisation : jamais depuis l'UI locale
+            return True
+
+        def on_failed(view, event, uri, error):
+            GLib.timeout_add_seconds(2, lambda: (view.load_uri(url), False)[1])
+            return False
+
+        view.connect("decide-policy", on_policy)
+        view.connect("permission-request", on_permission)
+        view.connect("load-failed", on_failed)
+        view.connect("close", lambda *_: app.quit())
+        win.set_child(view)
+        if not windowed:
+            win.fullscreen()
+        win.present()
+        view.load_uri(url)
+
+    app.connect("activate", on_activate)
+    return app.run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

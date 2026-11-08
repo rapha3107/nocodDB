@@ -1,0 +1,79 @@
+#!/usr/bin/bash
+# Affiche NEXUS Home (http://127.0.0.1:7777/).
+#   --session  : appelé par nexus-session dans gamescope (prépare nexusd + Steam,
+#                plein écran, redémarre le client s'il plante).
+#   --windowed : depuis le bureau KDE (fenêtre normale, nexusd déjà actif).
+set -u
+MODE="${1:---windowed}"
+URL="http://127.0.0.1:${NEXUS_PORT:-7777}/"
+HEALTH="${URL}api/health"
+NEXUS_KIOSK=auto
+NEXUS_START_STEAM=1
+[ -r /etc/nexus/session.conf ] && . /etc/nexus/session.conf
+USER_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nexus/session.conf"
+[ -r "$USER_CONF" ] && . "$USER_CONF"
+
+log() { echo "nexus-kiosk: $*" >&2; }
+
+if [ "$MODE" = "--session" ]; then
+    # nexusd (unité utilisateur) a démarré avec l'utilisateur, avant gamescope :
+    # on lui transmet l'affichage de gamescope pour que les émulateurs, mpv et le
+    # navigateur qu'il lance s'ouvrent ici, puis on le redémarre.
+    systemctl --user import-environment DISPLAY WAYLAND_DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP GAMESCOPE_WAYLAND_DISPLAY 2>/dev/null || true
+    dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP 2>/dev/null || true
+    systemctl --user restart nexusd.service || log "impossible de (re)démarrer nexusd.service"
+    if [ "${NEXUS_START_STEAM}" = "1" ] && command -v steam >/dev/null && ! pgrep -u "$(id -u)" -x steam >/dev/null; then
+        steam -silent >/dev/null 2>&1 &
+    fi
+fi
+
+# Attente de nexusd (60 s max) ; le client réessaie de toute façon tout seul.
+for _ in $(seq 1 120); do
+    curl -fsS --max-time 1 "$HEALTH" >/dev/null 2>&1 && break
+    sleep 0.5
+done
+
+pick_client() {
+    case "$NEXUS_KIOSK" in
+        webkit|firefox) echo "$NEXUS_KIOSK"; return ;;
+    esac
+    if /usr/bin/python3 -I /usr/libexec/nexus/nexus-webview --check >/dev/null 2>&1; then
+        echo webkit
+    elif flatpak info org.mozilla.firefox >/dev/null 2>&1; then
+        echo firefox
+    else
+        echo none
+    fi
+}
+
+run_client() {
+    local extra=()
+    [ "$MODE" = "--windowed" ] && extra=(--windowed)
+    case "$1" in
+        webkit) /usr/bin/python3 -I /usr/libexec/nexus/nexus-webview "${extra[@]}" "$URL" ;;
+        firefox)
+            if [ "$MODE" = "--windowed" ]; then flatpak run org.mozilla.firefox --new-window "$URL"
+            else flatpak run org.mozilla.firefox --kiosk "$URL"; fi ;;
+        *) log "aucun client d'affichage (WebKitGTK ou Firefox Flatpak) disponible"; return 3 ;;
+    esac
+}
+
+CLIENT=$(pick_client)
+log "client: $CLIENT"
+if [ "$MODE" = "--windowed" ]; then
+    run_client "$CLIENT"
+    exit $?
+fi
+# Session : un arrêt normal (code 0) termine la session ; un plantage relance le
+# client (5 fois max en 60 s) pour ne pas laisser un écran noir.
+fails=0; start=$(date +%s)
+while :; do
+    run_client "$CLIENT"; rc=$?
+    [ $rc -eq 0 ] && exit 0
+    now=$(date +%s)
+    if [ $((now - start)) -gt 60 ]; then fails=0; start=$now; fi
+    fails=$((fails + 1))
+    log "client terminé (code $rc), relance $fails/5"
+    [ $fails -ge 5 ] && exit $rc
+    sleep 1
+done

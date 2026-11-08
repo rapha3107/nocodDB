@@ -454,6 +454,7 @@ def test_optimize_nvidia(ctx, tmp_path, net, home):
     d = tmp_path / "drm/card0/device"
     d.mkdir(parents=True)
     (d / "vendor").write_text("0x10de\n")
+    ctx.settings.set("hardware.mangohud", True)
     before = (home / ".local/share/Steam/config/config.vdf").read_text()
     r = ctx.call("games.optimize", {"id": "steam:570"})
     assert r["gpu"] == ["nvidia"]
@@ -471,3 +472,67 @@ def test_optimize_without_tools(ctx, runner):
     gm = next(x for x in r["recommendations"] if x["title"] == "GameMode")
     assert gm["available"] is False
     assert "Lutris" in r["how_to_apply"]
+
+
+def test_optimize_mangohud_setting_off(ctx, tmp_path):
+    r = ctx.call("games.optimize", {"id": "steam:570"})  # hardware.mangohud defaults to False
+    assert r["steam_launch_options"] == "gamemoderun %command%"
+    mh = next(x for x in r["recommendations"] if x["title"] == "MangoHud")
+    assert mh["enabled_in_settings"] is False and mh["option"] == "mangohud %command%"
+    assert "options de lancement" in r["note"]
+
+
+def test_malformed_id_rejected_before_confirmation(ctx, runner):
+    # validator runs before the permission check: no confirmation is ever created
+    with pytest.raises(InvalidParams):
+        ctx.call("games.uninstall", {"id": "570; rm -rf"}, origin=Origin.AI)
+    assert ctx.permissions.pending() == []
+    assert runner.spawned == []
+
+
+# ------------------------------------------------------------------ hardware integration
+
+from nexus.core.module import NexusModule, action  # noqa: E402
+from nexus.security.permissions import Risk  # noqa: E402
+
+
+class FakeHardware(NexusModule):
+    name = "hardware"
+    info_data: dict = {}
+
+    @action("info", Risk.READ, "fake")
+    def info(self):
+        return self.info_data
+
+
+def test_diagnose_uses_hardware_info(ctx, runner, net):
+    hw = FakeHardware(ctx)
+    hw.info_data = {"cpu": {"avx2": False},
+                    "gpus": [{"vendor": "nvidia", "name": "GeForce RTX 3060", "driver": "nvidia"}],
+                    "vulkan": {"available": True, "devices": [{"name": "NVIDIA GeForce RTX 3060"}]}}
+    ctx.registry.register(hw)
+    r = ctx.call("games.diagnose", {"id": "steam:570"})
+    c = _codes(r)
+    assert c["cpu_no_avx2"]["level"] == "warning"
+    assert "GeForce RTX 3060" in c["gpu"]["message"]
+    assert c["vulkan_ok"]["details"]["devices"] == ["NVIDIA GeForce RTX 3060"]
+    assert ["vulkaninfo", "--summary"] not in runner.calls  # not run twice
+    # optimize falls back on hardware.info when sysfs gives nothing
+    assert ctx.call("games.optimize", {"id": "steam:570"})["gpu"] == ["nvidia"]
+
+
+def test_diagnose_hardware_info_failing(ctx, runner):
+    from nexus.core.errors import Unavailable as U
+
+    class Broken(FakeHardware):
+        def info(self):
+            raise U("pas de matériel")
+    Broken.info = action("info", Risk.READ, "fake")(Broken.info)
+    ctx.registry.register(Broken(ctx))
+    r = ctx.call("games.diagnose", {"id": "steam:570"})
+    assert "hardware_unchecked" in _codes(r)
+
+
+def test_diagnose_without_hardware_module(ctx):
+    r = ctx.call("games.diagnose", {"id": "lutris:12"})
+    assert "hardware_unchecked" in _codes(r)

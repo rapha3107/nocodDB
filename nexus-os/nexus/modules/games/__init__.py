@@ -109,6 +109,10 @@ def canonical_id(gid: str) -> str:
     return f"lutris:{key[0]}"
 
 
+ID_PARAM = Param("str", description="Identifiant du jeu (steam:<appid>, heroic:<runner>:<appName>, lutris:<id>)",
+                 validator=parse_id)
+
+
 class GamesModule(NexusModule):
     name = "games"
     title = "Jeux"
@@ -314,7 +318,7 @@ class GamesModule(NexusModule):
         return {"count": len(lib["games"]), "counts": counts, "updated": _iso(lib["updated"])}
 
     @action("launch", Risk.CONTROL, "Lance un jeu via son lanceur officiel (Steam, Heroic ou Lutris)",
-            {"id": Param("str", description="Identifiant du jeu, ex. steam:570")},
+            {"id": Param("str", description="Identifiant du jeu, ex. steam:570", validator=parse_id)},
             summary=lambda p: f"Lancer le jeu {p.get('id')}")
     def launch(self, id):
         src, key = parse_id(id)
@@ -346,7 +350,7 @@ class GamesModule(NexusModule):
 
     @action("install", Risk.INSTALL_OWNED,
             "Installe un jeu possédé via son client officiel (Steam ouvre sa fenêtre d'installation)",
-            {"id": Param("str", description="Identifiant du jeu, ex. steam:570")},
+            {"id": Param("str", description="Identifiant du jeu, ex. steam:570", validator=parse_id)},
             summary=lambda p: f"Installer le jeu {p.get('id')} via son client officiel")
     def install(self, id):
         src, key = parse_id(id)
@@ -366,7 +370,7 @@ class GamesModule(NexusModule):
 
     @action("uninstall", Risk.DELETE_DATA,
             "Désinstalle un jeu Steam (supprime ses fichiers ; Steam demande aussi confirmation)",
-            {"id": Param("str", description="Identifiant du jeu, ex. steam:570")},
+            {"id": Param("str", description="Identifiant du jeu, ex. steam:570", validator=parse_id)},
             summary=lambda p: f"Désinstaller le jeu {p.get('id')} (ses fichiers seront supprimés par le lanceur)")
     def uninstall(self, id):
         src, key = parse_id(id)
@@ -404,7 +408,7 @@ class GamesModule(NexusModule):
         return {"opened": launcher}
 
     @action("details", Risk.READ, "Détails d'un jeu (installation, taille, lanceur, outil de compatibilité)",
-            {"id": Param("str")})
+            {"id": ID_PARAM})
     def details(self, id):
         g = self._get(id)
         out = self._public(g)
@@ -460,7 +464,7 @@ class GamesModule(NexusModule):
         return res
 
     @action("compatibility", Risk.READ,
-            "Niveau de compatibilité Linux/Proton d'un jeu (rapports ProtonDB pour Steam)", {"id": Param("str")})
+            "Niveau de compatibilité Linux/Proton d'un jeu (rapports ProtonDB pour Steam)", {"id": ID_PARAM})
     def compatibility(self, id):
         src, key = parse_id(id)
         cid = canonical_id(id)
@@ -471,6 +475,35 @@ class GamesModule(NexusModule):
                         "(ProtonDB ne référence que les identifiants Steam)."}
 
     # --------------------------------------------------------------- diagnose
+    def _hardware_info(self) -> dict | None:
+        """hardware.info if the hardware module is loaded; None otherwise (never fatal)."""
+        if not self.ctx.module("hardware"):
+            return None
+        try:
+            info = self.ctx.call("hardware.info")
+        except NexusError as e:
+            self.log.info("hardware.info indisponible: %s", e.message)
+            return None
+        return info if isinstance(info, dict) else None
+
+    @staticmethod
+    def _vulkan_from_hw(vk: dict) -> dict:
+        devices = [str(d.get("name", "")).strip() for d in (vk.get("devices") or []) if isinstance(d, dict)]
+        if not vk.get("available") or not devices:
+            reason = vk.get("reason") or "aucun périphérique Vulkan"
+            if "absent" in reason and "vulkaninfo" in reason:
+                return {"level": "info", "code": "vulkan_unchecked",
+                        "message": "vulkaninfo absent : le support Vulkan n'a pas pu être vérifié"}
+            return {"level": "error", "code": "vulkan_missing",
+                    "message": f"Aucun périphérique Vulkan détecté : Proton/DXVK ne peut pas fonctionner ({reason})"}
+        hw = [d for d in devices if "llvmpipe" not in d.lower()]
+        if not hw:
+            return {"level": "error", "code": "vulkan_software",
+                    "message": "Seul le rendu logiciel (llvmpipe) est disponible : pilote GPU absent ou cassé",
+                    "details": {"devices": devices}}
+        return {"level": "ok", "code": "vulkan_ok", "message": f"Vulkan disponible : {', '.join(hw)}",
+                "details": {"devices": devices}}
+
     def _vulkan(self) -> dict:
         if not self.ctx.runner.available("vulkaninfo"):
             return {"level": "info", "code": "vulkan_unchecked",
@@ -540,7 +573,7 @@ class GamesModule(NexusModule):
                 "details": {"path": str(f), "errors": extract}}
 
     @action("diagnose", Risk.READ, "Analyse pourquoi un jeu ne fonctionne pas (installation, Proton, Vulkan, disque, journaux)",
-            {"id": Param("str")})
+            {"id": ID_PARAM})
     def diagnose(self, id):
         src, key = parse_id(id)
         cid = canonical_id(id)
@@ -631,7 +664,25 @@ class GamesModule(NexusModule):
         else:
             suggestions.append("Dans Lutris : clic droit sur le jeu > « Afficher les journaux ».")
 
-        findings.append(self._vulkan())
+        hw = self._hardware_info()
+        if hw and isinstance(hw.get("vulkan"), dict):
+            findings.append(self._vulkan_from_hw(hw["vulkan"]))  # avoid running vulkaninfo twice
+        else:
+            findings.append(self._vulkan())
+        if hw:
+            cpu = hw.get("cpu") if isinstance(hw.get("cpu"), dict) else {}
+            if cpu.get("avx2") is False:
+                findings.append({"level": "warning", "code": "cpu_no_avx2",
+                                 "message": "Le processeur ne prend pas en charge AVX2 : certains jeux récents "
+                                            "l'exigent et refusent de démarrer ou plantent au lancement"})
+            gpus = [g for g in (hw.get("gpus") or []) if isinstance(g, dict)]
+            if gpus:
+                findings.append({"level": "info", "code": "gpu",
+                                 "message": "Carte(s) graphique(s) : " + ", ".join(
+                                     f"{g.get('name') or g.get('vendor')} (pilote {g.get('driver') or '?'})" for g in gpus)})
+        else:
+            findings.append({"level": "info", "code": "hardware_unchecked",
+                             "message": "Module matériel indisponible : processeur et GPU non vérifiés"})
         if any(f["code"] in ("vulkan_missing", "vulkan_software") for f in findings):
             suggestions.append("Vérifiez le pilote graphique (Bazzite : image -nvidia pour les cartes NVIDIA).")
 
@@ -656,11 +707,17 @@ class GamesModule(NexusModule):
                     out.append(v)
         except OSError:
             pass
+        if not out:  # fall back on the hardware module when sysfs is not readable here
+            hw = self._hardware_info() or {}
+            for g in hw.get("gpus") or []:
+                v = g.get("vendor") if isinstance(g, dict) else None
+                if v in ("nvidia", "amd", "intel") and v not in out:
+                    out.append(v)
         return out
 
     @action("optimize", Risk.READ,
             "Recommandations concrètes pour améliorer les performances d'un jeu (rien n'est modifié automatiquement)",
-            {"id": Param("str")})
+            {"id": ID_PARAM})
     def optimize(self, id):
         src, key = parse_id(id)
         cid = canonical_id(id)
@@ -676,10 +733,16 @@ class GamesModule(NexusModule):
         recs.append({"title": "GameMode", "option": "gamemoderun %command%", "available": has_gm,
                      "why": "Active le gouverneur CPU performance et priorise le jeu pendant la partie."
                             + ("" if has_gm else " (gamemoderun introuvable sur ce système)")})
-        if has_mh:
+        mh_on = bool(self.ctx.settings.get("hardware.mangohud", False))
+        if has_mh and mh_on:
             wrappers.append("mangohud")
         recs.append({"title": "MangoHud", "option": "mangohud %command%", "available": has_mh,
+                     "enabled_in_settings": mh_on,
                      "why": "Affiche FPS, températures et charge GPU/CPU pour mesurer l'effet des réglages."
+                            + (" Overlay activé dans NEXUS (réglage hardware.mangohud) : inclus dans la ligne "
+                               "proposée, il prend effet sur Steam uniquement via les options de lancement."
+                               if mh_on else " Overlay désactivé dans NEXUS : non inclus dans la ligne proposée "
+                               "(activez-le dans Matériel > Overlay ou ajoutez « mangohud » vous-même).")
                             + ("" if has_mh else " (mangohud introuvable sur ce système)")})
         if "nvidia" in gpus:
             env.append("PROTON_ENABLE_NVAPI=1")
@@ -703,7 +766,9 @@ class GamesModule(NexusModule):
             out["how_to_apply"] = ("Steam > clic droit sur le jeu > Propriétés > Général > Options de lancement : "
                                    "collez la ligne proposée.")
             out["note"] = ("NEXUS n'écrit pas dans la configuration de Steam (localconfig.vdf) : Steam la réécrit "
-                           "à la fermeture et une modification externe peut être perdue ou corrompre vos réglages.")
+                           "à la fermeture et une modification externe peut être perdue ou corrompre vos réglages. "
+                           "Les réglages NEXUS (ex. overlay MangoHud, hardware.mangohud) ne s'appliquent donc aux "
+                           "jeux Steam qu'à travers ces options de lancement.")
         elif src == "heroic":
             out["how_to_apply"] = ("Heroic > page du jeu > Paramètres : cochez « Utiliser GameMode » et "
                                    "« Activer MangoHud » ; les variables d'environnement se mettent dans « Avancé ».")

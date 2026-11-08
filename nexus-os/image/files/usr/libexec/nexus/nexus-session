@@ -1,0 +1,14 @@
+#!/usr/bin/bash
+# Session de connexion « NEXUS » (/usr/share/wayland-sessions/nexus.desktop).
+# Lance gamescope en plein écran ; à l'intérieur, nexus-kiosk prépare nexusd et
+# Steam puis affiche NEXUS Home. Quitter NEXUS Home (menu Bureau / power.logout)
+# termine la session et ramène à l'écran de connexion, où l'on peut choisir
+# « Plasma » (bureau KDE de Bazzite).
+set -u
+NEXUS_GAMESCOPE_ARGS="-f"
+[ -r /etc/nexus/session.conf ] && . /etc/nexus/session.conf
+USER_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nexus/session.conf"
+[ -r "$USER_CONF" ] && . "$USER_CONF"
+export XDG_CURRENT_DESKTOP=gamescope
+# shellcheck disable=SC2086  # NEXUS_GAMESCOPE_ARGS est volontairement découpé en mots
+exec gamescope $NEXUS_GAMESCOPE_ARGS -- /usr/libexec/nexus/nexus-kiosk --session
